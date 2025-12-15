@@ -70,13 +70,39 @@ def solve(cus_labels, cus_schools, cus_firms, firms_cus, M):
         model.addCons(sum(y[i, t] for t in range(quantity_intervals_count)) == 1)
 
     model.optimize()
+    solutions = []
 
-    solution = model.getBestSol()
+    while model.getNSols() > 0:
+        if model.getNSols() == 0:
+            break
+        sol = model.getBestSol()
+        print(f"Solution: {sol}")
+        solutions.append(sol)
+        model.freeTransform()  # Return to problem stage before modifying
 
-    for i in range(firms_count):
-        for j in firms_cus[i]:
-            print(f"{x[i, j].name} = {np.round(solution[x[i, j]], 2)}")
+        W = np.empty((firms_count, cus_count), dtype=object)
+        V = np.empty((firms_count, cus_count), dtype=object)
 
-    solutions = model.getSols()
-    print(f"Number of solutions: {solutions}")
-    return solutions
+        for i in range(firms_count):
+            for j in firms_cus[i]:
+                W[i, j] = model.addVar(name=f"W_{i}_{j}", vtype="B")
+                V[i, j] = model.addVar(name=f"V_{i}_{j}", vtype="I")
+
+        for i in range(firms_count):
+            for j in firms_cus[i]:
+                if sol[x[i, j]] > 0:
+                    model.addCons(x[i, j] >= (sol[x[i, j]] + 1) * W[i, j])
+                    model.addCons(M - x[i, j] >= (M - (sol[x[i, j]] - 1)) * V[i, j])
+
+        model.addCons(
+            sum(
+                W[i, j] + V[i, j] if sol[x[i, j]] > 0 else 0
+                for i in range(firms_count)
+                for j in firms_cus[i]
+            )
+            >= 1
+        )
+
+        model.optimize()
+
+    return True
