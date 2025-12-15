@@ -19,6 +19,33 @@ regions_names = ["C1", "C2", "C3", "C4"]
 regions_count = len(regions_grids)
 regions_schools = np.empty(regions_count, dtype=object)
 
+regions = {
+    "C1": {
+        "color": "blue",
+        "name": "C1",
+        "grid": r1_grid,
+        "schools": [],
+    },
+    "C2": {
+        "color": "green",
+        "name": "C2",
+        "grid": r2_grid,
+        "schools": [],
+    },
+    "C3": {
+        "color": "yellow",
+        "name": "C3",
+        "grid": r3_grid,
+        "schools": [],
+    },
+    "C4": {
+        "color": "red",
+        "name": "C4",
+        "grid": r4_grid,
+        "schools": [],
+    },
+}
+
 # Generate random schools
 rng = np.random.default_rng(42)
 weights2 = np.exp(-0.25 * np.arange(grid_size))
@@ -69,10 +96,9 @@ for intersection in intersections:
     matching_schools_ids = matching_schools_ids[matching_schools_ids > 0]
     matching_regions_ids = [i for i in range(regions_count) if (intersection >> i) & 1]
     for region_id in matching_regions_ids:
-        print(region_id, matching_schools_ids)
-        regions_schools[region_id] = matching_schools_ids
+        regions[regions_names[region_id]]["schools"].extend(matching_schools_ids)
 
-print(regions_schools)
+print(regions)
 
 ############# Schools plot #############
 plt.rc("font", family="serif")
