@@ -1,10 +1,10 @@
 import numpy as np
-import csv
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from pyscipopt import Model
+from model_solver import solve
 
 bg_rgb = np.array([1.0, 1.0, 1.0])
 schools_count = 709
@@ -55,7 +55,6 @@ for cu_idx, cu in enumerate(cus):
     matching_schools_ids = schools_grid[cu_grid]
     matching_schools_ids = matching_schools_ids[matching_schools_ids > 0]
     matching_firms_ids = np.array([i for i in range(firms_count) if (cu >> i) & 1])
-    print("matching_firms_ids", matching_firms_ids)
     cus_schools[cu] = matching_schools_ids
     cus_firms[cu] = matching_firms_ids
     for firm_id in matching_firms_ids:
@@ -142,79 +141,4 @@ plt.close()
 
 ############# Model resolution #############
 
-model = Model("Licitación")
-cus_labels = cus_labels[cus]
-cus_schools = cus_schools[cus]
-cus_firms = cus_firms[cus]
-quantity_intervals = [[0, 100], [100, 200], [200, 400], [400, 709]]
-quantity_intervals_count = len(quantity_intervals)
-company_price_per_interval = np.array(
-    [
-        [10, 10, 10, 10],
-        [800, 800, 800, 250],
-        [700, 500, 400, 300],
-        [10, 10, 10, 10],
-    ]
-)
-
-x = np.empty((firms_count, cus_count), dtype=object)
-y = np.empty((firms_count, quantity_intervals_count), dtype=object)
-z = np.empty((firms_count, quantity_intervals_count), dtype=object)
-
-for i in range(firms_count):
-    for j in firms_cus[i]:
-        x[i, j] = model.addVar(
-            name=f"Número de escuelas asignadas a la empresa {i} en la unidad de competencia {cus_labels[j]}",
-            vtype="integer",
-        )
-
-for i in range(firms_count):
-    for t in range(quantity_intervals_count):
-        y[i, t] = model.addVar(
-            name=f"A la empresa {i} se le asigna el intervalo {quantity_intervals[t]}",
-            vtype="binary",
-        )
-        z[i, t] = model.addVar(
-            name=f"Número de escuelas asignadas a la empresa {i} en el intervalo {quantity_intervals[t]}",
-            vtype="integer",
-        )
-
-model.setObjective(
-    sum(
-        z[i, t] * company_price_per_interval[i, t]
-        for i in range(firms_count)
-        for t in range(quantity_intervals_count)
-    ),
-    "minimize",
-)
-
-for j in range(cus_count):
-    model.addCons(sum(x[i, j] for i in cus_firms[j]) == len(cus_schools[j]))
-
-for i in range(firms_count):
-    for t in range(quantity_intervals_count):
-        model.addCons(
-            sum(x[i, j] for j in firms_cus[i])
-            >= quantity_intervals[t][0] - schools_count * (1 - y[i, t])
-        )
-        model.addCons(
-            sum(x[i, j] for j in firms_cus[i])
-            <= quantity_intervals[t][1] + schools_count * (1 - y[i, t])
-        )
-        model.addCons(
-            sum(x[i, j] for j in firms_cus[i])
-            <= z[i, t] + schools_count * (1 - y[i, t])
-        )
-
-for i in range(firms_count):
-    model.addCons(sum(y[i, t] for t in range(quantity_intervals_count)) == 1)
-
-model.optimize()
-
-solution = model.getBestSol()
-
-for i in range(firms_count):
-    for j in firms_cus[i]:
-        print(
-            f"{x[i, j].name} with prices {company_price_per_interval[i]} = {solution[x[i, j]]}"
-        )
+solve(cus_labels[cus], cus_schools[cus], cus_firms[cus], firms_cus, schools_count)
