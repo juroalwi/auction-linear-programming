@@ -2,38 +2,22 @@ import numpy as np
 from pyscipopt import Model
 
 
-def solve(cus_labels, cus_schools, cus_firms, firms_cus, M):
+def solve(cus_map, firms_map, firms_price_per_interval, quantity_intervals, M):
     model = Model("Licitación")
     model.setIntParam("display/verblevel", 0)
 
-    cus_count = len(cus_labels)
-    firms_count = len(firms_cus)
-    quantity_intervals = [
-        [0, 50],
-        [50, 100],
-        [100, 200],
-        [200, 300],
-        [300, 500],
-        [500, 709],
-    ]
+    cus_count = len(cus_map)
+    firms_count = len(firms_map)
     quantity_intervals_count = len(quantity_intervals)
-    company_price_per_interval = np.array(
-        [
-            [800, 700, 600, 200, 180, 160],
-            [800, 800, 800, 800, 800, 300],
-            [700, 550, 400, 280, 240, 220],
-            [550, 450, 350, 300, 250, 240],
-        ]
-    )
 
     x = np.empty((firms_count, cus_count), dtype=object)
     y = np.empty((firms_count, quantity_intervals_count), dtype=object)
     z = np.empty((firms_count, quantity_intervals_count), dtype=object)
 
-    for i in range(firms_count):
-        for j in firms_cus[i]:
+    for i, firm in firms_map.items():
+        for j in firm["cus"]:
             x[i, j] = model.addVar(
-                name=f"Número de escuelas asignadas a la empresa {i} en la unidad de competencia {cus_labels[j]}",
+                name=f"Número de escuelas asignadas a la empresa {firm['label']} en la unidad de competencia {cus_map[j]['label']}",
                 vtype="I",
             )
 
@@ -50,28 +34,28 @@ def solve(cus_labels, cus_schools, cus_firms, firms_cus, M):
 
     model.setObjective(
         sum(
-            z[i, t] * company_price_per_interval[i, t]
+            z[i, t] * firms_price_per_interval[i, t]
             for i in range(firms_count)
             for t in range(quantity_intervals_count)
         ),
         "minimize",
     )
 
-    for j in range(cus_count):
-        model.addCons(sum(x[i, j] for i in cus_firms[j]) == len(cus_schools[j]))
+    for j, cu in cus_map.items():
+        model.addCons(sum(x[i, j] for i in cu["firms"]) == len(cu["schools"]))
 
-    for i in range(firms_count):
+    for i, firm in firms_map.items():
         for t in range(quantity_intervals_count):
             model.addCons(
-                sum(x[i, j] for j in firms_cus[i])
+                sum(x[i, j] for j in firm["cus"])
                 >= quantity_intervals[t][0] - M * (1 - y[i, t])
             )
             model.addCons(
-                sum(x[i, j] for j in firms_cus[i])
+                sum(x[i, j] for j in firm["cus"])
                 <= quantity_intervals[t][1] + M * (1 - y[i, t])
             )
             model.addCons(
-                sum(x[i, j] for j in firms_cus[i]) <= z[i, t] + M * (1 - y[i, t])
+                sum(x[i, j] for j in firm["cus"]) <= z[i, t] + M * (1 - y[i, t])
             )
 
     for i in range(firms_count):
@@ -81,15 +65,18 @@ def solve(cus_labels, cus_schools, cus_firms, firms_cus, M):
     prev_obj_val = np.inf
     iteration = 1
     max_iterations = 100
+    eps = 1e-6
 
     while iteration <= max_iterations:
-        print(f"Optimizing {iteration}...")
+        print(f"Optimizando {iteration}...")
         model.optimize()
         status = model.getStatus()
         obj_val = model.getObjVal()
 
-        if obj_val > prev_obj_val:
-            print(f"Iteration {iteration} new worst objective value: {obj_val}")
+        if obj_val > prev_obj_val + eps:
+            print(
+                f"Nuevo valor objetivo {obj_val} es peor que el anterior {prev_obj_val}. Abortando."
+            )
             break
 
         prev_obj_val = obj_val
@@ -100,8 +87,8 @@ def solve(cus_labels, cus_schools, cus_firms, firms_cus, M):
 
         A = {}
 
-        for i in range(firms_count):
-            for j in firms_cus[i]:
+        for i, firm in firms_map.items():
+            for j in firm["cus"]:
                 A[(i, j)] = round(model.getVal(x[i, j]))
 
         solutions.append(A)
@@ -110,11 +97,11 @@ def solve(cus_labels, cus_schools, cus_firms, firms_cus, M):
         W = np.empty((firms_count, cus_count), dtype=object)
         V = np.empty((firms_count, cus_count), dtype=object)
 
-        for i in range(firms_count):
-            for j in firms_cus[i]:
+        for i, firm in firms_map.items():
+            for j in firm["cus"]:
                 if A[(i, j)] > 0:
                     print(
-                        f"Empresa {i} en unidad de competencia {cus_labels[j]} tiene asignadas {A[(i, j)]} escuelas"
+                        f"Empresa {firm['label']} en unidad de competencia {cus_map[j]['label']} tiene asignadas {A[(i, j)]} escuelas"
                     )
                     W[i, j] = model.addVar(name=f"W_{i}_{j}", vtype="B")
                     V[i, j] = model.addVar(name=f"V_{i}_{j}", vtype="I")
@@ -124,8 +111,8 @@ def solve(cus_labels, cus_schools, cus_firms, firms_cus, M):
         model.addCons(
             sum(
                 W[i, j] + V[i, j] if A[(i, j)] > 0 else 0
-                for i in range(firms_count)
-                for j in firms_cus[i]
+                for i, firm in firms_map.items()
+                for j in firm["cus"]
             )
             >= 1
         )
