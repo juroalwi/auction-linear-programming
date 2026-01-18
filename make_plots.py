@@ -12,7 +12,7 @@ def make_plots(firms_map, cus_map, cus_img_grid, schools_grid, bg_rgb):
     plt.xlim(0, 1)
     plt.ylim(0, 1)
     plt.gca().set_aspect("equal", adjustable="box")
-    plt.title("Unidades de competencia")
+    plt.title("Competition units")
     plt.tight_layout()
     handles = [
         Line2D(
